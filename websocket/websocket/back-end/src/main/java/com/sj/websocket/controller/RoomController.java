@@ -27,7 +27,7 @@ public class RoomController {
     }
 
     @GetMapping("/joined")
-    public Result<List<EnteredRoomResponseDto>> joinedList(@RequestBody RoomJoinedRequestDto requestDto) {
+    public Result<List<EnteredRoomResponseDto>> joinedList(RoomJoinedRequestDto requestDto) {
         return service.findAll(requestDto.getUserId());
     }
 }
