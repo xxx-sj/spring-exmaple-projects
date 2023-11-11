@@ -1,11 +1,15 @@
 import mutations from "./mutations";
-import actions from "/.actions";
+import actions from "./actions";
 import getters from "./getters";
 
 export default {
     namespaced: true,
     state() {
-        return {};
+        return {
+            rooms: [],
+            enteredRooms: [],
+            userId: 2,
+        };
     },
     mutations,
     getters,
