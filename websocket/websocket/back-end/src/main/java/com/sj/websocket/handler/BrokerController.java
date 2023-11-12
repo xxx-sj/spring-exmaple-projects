@@ -40,4 +40,11 @@ public class BrokerController {
         template.convertAndSend("/sub/room/" + roomId, payload);
     }
 
+    @MessageMapping("/room/{roomId}/leave")
+    public void leave(@DestinationVariable(value = "roomId") String roomId, MessageDto messageDto) {
+        log.info("# leave method called");
+        final String payload = messageDto.getWriter() + "님이 방을 떠났습니다.";
+        template.convertAndSend("/sub/room/" + roomId, payload);
+    }
+
 }
