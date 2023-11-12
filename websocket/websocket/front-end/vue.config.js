@@ -1,11 +1,16 @@
 const { defineConfig } = require('@vue/cli-service')
+const path = require("path")
 
 const host = "localhost";
 const port = "8081";
+
+//D:\study_folder\spring_examples\websocket\websocket\front-end
+// console.log("__dirname", __dirname)
+
 module.exports = defineConfig({
   transpileDependencies: true,
 
-  outputDir: "../back-end/src/main/resources/static",
+  outputDir: path.resolve(__dirname, "../back-end/src/main/resources/static"),
 
 
   devServer: {

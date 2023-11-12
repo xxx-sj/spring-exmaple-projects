@@ -160,7 +160,8 @@ export default {
 
     connect() {
       //vue.config.js 참고
-      const url = "ws://localhost:8080/ws/init";
+      // const url = "ws://localhost:8080/ws/init";
+      const url = "ws://localhost:8081/ws/init";
       this.websocketClient = new Client({
         brokerURL: url,
         onConnect: () => {
