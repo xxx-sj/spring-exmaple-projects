@@ -1,28 +1,27 @@
 <template>
-  <div style="width: 100%; height: 100%;">
-    <div style="width: 100%; height: 100%; padding: 30px; display: flex; align-items: center; justify-content: center;">
-      <section class="room-list" style="width: 400px; height: 600px;  border: 1px solid black; margin-right: 2px;">
-        <section class="room-tab" style="width: 100%; height: 50px; display: flex; flex-wrap: nowrap; justify-content: space-evenly; align-items: center">
-          <div :class="activeRoomTab === 'ALL' ? 'active-all-room': 'all-room'" @click="activeTab('ALL')">전체 채팅 방</div>
-          <div :class="activeRoomTab === 'MINE'? 'active-my-room': 'my-room'" @click="activeTab('MINE')">내가 속한 채팅 방</div>
+  <div class="wrap">
+    <div class="container">
+      <section class="room-list">
+        <section class="room-tab">
+          <div :class="activatedRoomTab" @click="activeTab('ALL')">전체 채팅 방</div>
+          <div :class="activatedEnteredTab" @click="activeTab('MINE')">내가 속한 채팅 방</div>
         </section>
-        <section style="width: 100%; height: calc(100% - 50px);  overflow: scroll;">
+        <section style="width: 100%; height: calc(100% - 50px);  overflow: auto;">
           <keep-alive>
             <div style="overflow: hidden">
-              <template v-if="activeRoomTab ==='ALL'">
+              <template v-if="isAllTab">
                 <template v-for="room in rooms" :key="room">
                   <section style="padding: 5px;">
-                    <div class="room-item" >
+                    <div class="room-item" @click="openChatRoom(room)">
                       <p>{{room.name}}</p>
                     </div>
                   </section>
-
                 </template>
               </template>
               <template v-else>
                 <template v-for="room in enteredRooms" :key="room">
                   <section style="padding: 5px;">
-                    <div class="room-item" >
+                    <div class="room-item" @click="openChatRoom(room)">
                       <p>{{room.name}}</p>
                     </div>
                   </section>
@@ -32,8 +31,36 @@
           </keep-alive>
         </section>
       </section>
-      <section class="chat-area" style="width: 600px; height: 600px;  border: 1px solid black;">
+      <section class="chat-area">
+        <div class="chat-wrap">
+          <section class="chat-header">
+            <p>접속 중인 방 이름 : <span>{{enteredRoomName}}</span></p>
+          </section>
 
+          <section class="chat-list" v-if="!isLoading">
+
+            <template v-for="message in messages" :key="message">
+              <div style="width: 100%; min-height: 60px; margin: 10px; padding: 10px;">
+                <div style="background: rgb(75 209 71 / 23%); min-height: 60px;">
+                  {{message}}
+                </div>
+<!--                <div v-else style="background: #f4f42136; min-height: 60px;">-->
+<!--                  {{i}}-->
+<!--                </div>-->
+              </div>
+            </template>
+
+          </section>
+
+          <base-spinner v-else/>
+
+
+          <section class="chat-input-area">
+            <input class="chat-input" type="text" @keyup.enter="send" v-model="textMessage"/>
+            <button class="chat-input-send-btn" type="button"  @click="send">보내기</button>
+          </section>
+
+        </div>
       </section>
     </div>
   </div>
@@ -41,6 +68,7 @@
 
 <script>
 
+import { Client } from "@stomp/stompjs"
 
 export default {
   name: 'App',
@@ -51,13 +79,33 @@ export default {
       rooms: [],
       enteredRooms: [],
       isLoading: false,
+      currentRoom: null,
+
+      websocketClient: null,
+
+      textMessage: "",
+      messages: [],
     };
   },
 
   computed: {
     activatedRoomTab() {
 
-      return "a";
+      return this.activeRoomTab === 'ALL' ? 'active-all-room': 'all-room';
+    },
+
+    activatedEnteredTab() {
+      return this.activeRoomTab === 'MINE'? 'active-my-room': 'my-room';
+    },
+
+    isAllTab() {
+      return this.activeRoomTab ==='ALL';
+    },
+
+    enteredRoomName() {
+      if(!this.currentRoom) return "";
+
+      return this.currentRoom.name;
     },
   },
 
@@ -70,28 +118,87 @@ export default {
     this.enteredRooms = this.$store.getters['user/enteredRooms'];
   },
 
+  beforeUnmount() {
+    this.disconnect()
+  },
+
   methods: {
     async loadRooms() {
-      this.isLoading = true;
       try {
         await this.$store.dispatch('user/loadRooms')
         await this.$store.dispatch('user/loadEnteredRooms');
 
         this.rooms = this.$store.getters['user/rooms'];
         this.enteredRooms = this.$store.getters['user/enteredRooms'];
-        console.log(this.rooms[0]);
-        console.log(this.enteredRooms)
       } catch(error) {
         console.log(error)
       }
-
-      this.isLoading = false;
     },
-
 
     activeTab(activeTab) {
       this.activeRoomTab = activeTab;
-    }
+    },
+
+    async openChatRoom(room) {
+      this.isLoading = true;
+
+      await this.disconnect();
+      this.currentRoom = room;
+      this.clear();
+      await this.connect();
+    },
+
+    disconnect() {
+      if(this.websocketClient) {
+        this.websocketClient.publish({
+          destination: `/pub/room/${this.currentRoom.id}/leave`,
+          body: JSON.stringify({message: `${this.textMessage}`, writer: "user1"}),
+        });
+        this.websocketClient.deactivate();
+      }
+    },
+
+    connect() {
+      //vue.config.js 참고
+      const url = "ws://localhost:8080/ws/init";
+      this.websocketClient = new Client({
+        brokerURL: url,
+        onConnect: () => {
+          this.websocketClient.subscribe(`/sub/room/${this.currentRoom.id}`, msg => {
+            this.messages.push(msg.body);
+
+          })
+
+          this.websocketClient.publish({
+            destination: `/pub/room/${this.currentRoom.id}/entered`,
+            body: JSON.stringify({message: `${this.textMessage}`, writer: "user1"}),
+          });
+
+          this.isLoading = false;
+        },
+
+        onWebSocketError: () => {
+          this.isLoading = false;
+        },
+      })
+
+      this.websocketClient.activate();
+    },
+
+    send() {
+      if(!this.websocketClient) return;
+
+      this.websocketClient.publish({
+        destination: `/pub/room/${this.currentRoom.id}`,
+        body: JSON.stringify({message: `${this.textMessage}`, writer: "user1"}),
+      });
+
+    },
+
+    clear() {
+      this.textMessage = "";
+      this.messages = [];
+    },
   },
 }
 </script>
@@ -99,14 +206,6 @@ export default {
 <style>
 @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-  margin-top: 60px;
-}
 
 * {
   box-sizing: border-box;
@@ -117,6 +216,36 @@ body {
 
 html {
   font-family: "ROboto", sans-serif;
+}
+
+.wrap {
+  width: 100%;
+  height: 100%;
+}
+
+.container {
+  width: 100%;
+  height: 100%;
+  padding: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-list {
+  width: 400px;
+  height: 600px;
+  border: 1px solid black;
+  margin-right: 2px;
+}
+
+.room-tab {
+  width: 100%;
+  height: 50px;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: space-evenly;
+  align-items: center
 }
 
 .all-room {
@@ -174,5 +303,58 @@ html {
   font-size: 20px;
   font-weight: 800;
   color: white;
+}
+
+.chat-area {
+  width: 600px;
+  height: 600px;
+  border: 1px solid black;
+}
+
+.chat-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.chat-header {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  border: 1px solid #c8c8e3;
+  border-radius: 10px;
+}
+
+.chat-list {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  margin-top: 20px;
+  border-radius: 10px;
+  border: 1px solid rgba(208,185,185,0.34);
+  padding: 10px;
+}
+
+.chat-input-area {
+  width: 100%;
+  height: 200px;
+  background: white;
+  padding: 20px;
+}
+
+.chat-input {
+  height: 100%;
+  width: 80%;
+  margin-right: 20px;
+  border-radius: 10px;
+}
+
+.chat-input-send-btn {
+  height: 100%;
+  width: calc(20% - 20px);
+  border-radius: 10px;
+  border-style: none;
 }
 </style>
