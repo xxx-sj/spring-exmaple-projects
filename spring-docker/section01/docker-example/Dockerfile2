@@ -1,0 +1,6 @@
+FROM openjdk:11-jdk
+ENV test test
+ARG test2=test2
+CMD ["echo", "$test2"]
+#CMD ["echo", "==>", "${test2}"]
+ENTRYPOINT ["echo", "entry point test"]
